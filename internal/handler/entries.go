@@ -2,9 +2,11 @@ package handler
 
 import (
 	"context"
-	"net/http"
-	"time"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -42,7 +44,7 @@ func (h *EntriesHandler) ListEntries(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var id, content, userID, createdByName string
-		var location *string // location can be null, so we use a pointer
+		var location *string
 		var createdAt time.Time
 
 		if err := rows.Scan(&id, &content, &userID, &location, &createdAt, &createdByName); err != nil {
@@ -50,14 +52,38 @@ func (h *EntriesHandler) ListEntries(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Fetch photos for this entry
+		photoRows, err := h.DB.Query(context.Background(), `
+        SELECT file_path FROM photos
+        WHERE entry_id = $1
+        ORDER BY display_order ASC
+    `, id)
+
+		photos := []string{}
+		if err == nil {
+			defer photoRows.Close()
+			for photoRows.Next() {
+				var filePath string
+				if err := photoRows.Scan(&filePath); err == nil {
+					// Build the public S3 URL
+					publicURL := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s",
+						os.Getenv("AWS_BUCKET"),
+						os.Getenv("AWS_REGION"),
+						filePath,
+					)
+					photos = append(photos, publicURL)
+				}
+			}
+		}
+
 		entries = append(entries, map[string]any{
 			"id":              id,
 			"content":         content,
-			"created_at":      createdAt,
+			"created_at":      createdAt.Format(time.RFC3339),
 			"user_id":         userID,
 			"created_by_name": createdByName,
-			"photos":          []string{}, // placeholder for now
-			"location":        location,   // will be null in JSON if location is nil
+			"location":        location,
+			"photos":          photos,
 		})
 	}
 

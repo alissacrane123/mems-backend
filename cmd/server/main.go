@@ -14,6 +14,7 @@ import (
 
 	"github.com/alissacrane123/mems-backend/internal/handler"
 	"github.com/alissacrane123/mems-backend/internal/middleware"
+	"github.com/alissacrane123/mems-backend/internal/storage"
 )
 
 func main() {
@@ -27,13 +28,18 @@ func main() {
 
 	fmt.Println("Connected to database!")
 
+	s3Client, err := storage.NewS3Client()
+	if err != nil {
+		log.Fatal("Failed to connect to S3:", err)
+	}
+
 	authHandler := &handler.AuthHandler{DB: db}
 
 	usersHandler := &handler.UsersHandler{DB: db}
 	boardsHandler := &handler.BoardsHandler{DB: db}
 	membersHandler := &handler.MembersHandler{DB: db}
 	entriesHandler := &handler.EntriesHandler{DB: db}
-	photosHandler := &handler.PhotosHandler{DB: db}
+	photosHandler := &handler.PhotosHandler{DB: db, S3: s3Client}
 	notificationsHandler := &handler.NotificationsHandler{DB: db}
 
 	r := chi.NewRouter()
