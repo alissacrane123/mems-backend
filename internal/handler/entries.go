@@ -95,8 +95,9 @@ func (h *EntriesHandler) CreateEntry(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r)
 
 	var req struct {
-		Content  string  `json:"content"`
-		Location *string `json:"location"`
+		Content   string  `json:"content"`
+		Location  *string `json:"location"`
+		CreatedAt *string `json:"created_at"` // optional, pointer so it can be nil
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -108,15 +109,22 @@ func (h *EntriesHandler) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "content is required")
 		return
 	}
+	// Use provided created_at or default to now()
+	var createdAtValue string
+	if req.CreatedAt != nil {
+		createdAtValue = *req.CreatedAt
+	} else {
+		createdAtValue = "now()"
+	}
 
 	var id string
 	var createdAt time.Time
 
 	err := h.DB.QueryRow(context.Background(), `
-		INSERT INTO entries (user_id, board_id, content, location)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, created_at
-	`, userID, boardID, req.Content, req.Location).Scan(&id, &createdAt)
+    INSERT INTO entries (user_id, board_id, content, location, created_at)
+    VALUES ($1, $2, $3, $4, $5::timestamptz)
+    RETURNING id, created_at
+`, userID, boardID, req.Content, req.Location, createdAtValue).Scan(&id, &createdAt)
 
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create entry")
