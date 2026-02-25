@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -46,7 +47,9 @@ func (h *BoardsHandler) ListBoards(w http.ResponseWriter, r *http.Request) {
 			b.description,
 			b.invite_code,
 			bm.role,
-			(SELECT COUNT(*) FROM board_members WHERE board_id = b.id) as member_count
+			(SELECT COUNT(*) FROM board_members WHERE board_id = b.id) as member_count,
+			b.created_at,
+			b.updated_at
 		FROM boards b
 		JOIN board_members bm ON bm.board_id = b.id
 		WHERE bm.user_id = $1
@@ -71,9 +74,10 @@ func (h *BoardsHandler) ListBoards(w http.ResponseWriter, r *http.Request) {
 		var description *string // pointer because description can be NULL in the DB
 		var inviteCode string
 		var memberCount int
+		var createdAt, updatedAt time.Time	
 
 		// Scan reads the current row's values into our variables
-		if err := rows.Scan(&id, &name, &description, &inviteCode, &role, &memberCount); err != nil {
+		if err := rows.Scan(&id, &name, &description, &inviteCode, &role, &memberCount, &createdAt, &updatedAt	); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to read board data")
 			return
 		}
@@ -85,6 +89,8 @@ func (h *BoardsHandler) ListBoards(w http.ResponseWriter, r *http.Request) {
 			"invite_code":  inviteCode,
 			"role":         role,
 			"member_count": memberCount,
+			"created_at":   createdAt.Format(time.RFC3339),
+			"updated_at":   updatedAt.Format(time.RFC3339),
 		})
 	}
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/alissacrane123/mems-backend/internal/middleware"
@@ -21,13 +22,28 @@ type FoldersHandler struct {
 // The frontend can use parent_id to build the tree structure.
 func (h *FoldersHandler) ListFolders(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r)
+	parentID := r.URL.Query().Get("parent_id")
 
-	rows, err := h.DB.Query(context.Background(), `
-		SELECT id, name, parent_id, created_at, updated_at
-		FROM folders
-		WHERE user_id = $1
-		ORDER BY name ASC
-	`, userID)
+	var rows pgx.Rows
+	var err error
+
+	if parentID != "" {
+		// Return subfolders of the specified folder
+		rows, err = h.DB.Query(context.Background(), `
+            SELECT id, name, parent_id, created_at, updated_at
+            FROM folders
+            WHERE user_id = $1 AND parent_id = $2
+            ORDER BY name ASC
+        `, userID, parentID)
+	} else {
+		// Return root folders only
+		rows, err = h.DB.Query(context.Background(), `
+            SELECT id, name, parent_id, created_at, updated_at
+            FROM folders
+            WHERE user_id = $1 AND parent_id IS NULL
+            ORDER BY name ASC
+        `, userID)
+	}
 
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch folders")
@@ -39,10 +55,10 @@ func (h *FoldersHandler) ListFolders(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var id, name string
-		var parentID *string // pointer because parent_id can be null (root folder)
+		var folderParentID *string
 		var createdAt, updatedAt time.Time
 
-		if err := rows.Scan(&id, &name, &parentID, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&id, &name, &folderParentID, &createdAt, &updatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to read folder data")
 			return
 		}
@@ -50,7 +66,7 @@ func (h *FoldersHandler) ListFolders(w http.ResponseWriter, r *http.Request) {
 		folders = append(folders, map[string]any{
 			"id":         id,
 			"name":       name,
-			"parent_id":  parentID,
+			"parent_id":  folderParentID,
 			"created_at": createdAt.Format(time.RFC3339),
 			"updated_at": updatedAt.Format(time.RFC3339),
 		})
@@ -319,9 +335,52 @@ func (h *FoldersHandler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
 
 	// Delete the folder — in delete mode the CASCADE handles subfolders and notes
 	// In move-up mode the folder is now empty so this just deletes the folder itself
+	if mode == "delete" {
+		// First use recursive CTE to find ALL descendant folder IDs including the folder itself
+		rows, err := h.DB.Query(context.Background(), `
+        WITH RECURSIVE descendants AS (
+            SELECT id FROM folders WHERE id = $1
+            UNION ALL
+            SELECT f.id FROM folders f
+            INNER JOIN descendants d ON f.parent_id = d.id
+        )
+        SELECT id FROM descendants
+    `, id)
+
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to find subfolders")
+			return
+		}
+		defer rows.Close()
+
+		// Collect all folder IDs (including the target folder)
+		var allFolderIDs []string
+		for rows.Next() {
+			var folderID string
+			if err := rows.Scan(&folderID); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to read folder data")
+				return
+			}
+			allFolderIDs = append(allFolderIDs, folderID)
+		}
+		rows.Close()
+
+		// Delete all notes in all those folders
+		_, err = h.DB.Exec(context.Background(), `
+        DELETE FROM notes
+        WHERE folder_id = ANY($1::uuid[]) AND user_id = $2
+    `, allFolderIDs, userID)
+
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to delete notes")
+			return
+		}
+	}
+
+	// Now delete the folder — CASCADE handles subfolders
 	_, err = h.DB.Exec(context.Background(), `
-		DELETE FROM folders WHERE id = $1 AND user_id = $2
-	`, id, userID)
+    DELETE FROM folders WHERE id = $1 AND user_id = $2
+`, id, userID)
 
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete folder")
