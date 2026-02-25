@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"time"
 
+
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/alissacrane123/mems-backend/internal/middleware"
 )
@@ -18,43 +20,59 @@ type NotesHandler struct {
 
 // ListNotes handles GET /api/notes
 func (h *NotesHandler) ListNotes(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.GetUserID(r)
+    userID := middleware.GetUserID(r)
+    folderID := r.URL.Query().Get("folder_id")
 
-	rows, err := h.DB.Query(context.Background(), `
-		SELECT id, title, content, created_at, updated_at
-		FROM notes
-		WHERE user_id = $1
-		ORDER BY updated_at DESC
-	`, userID)
+    var rows pgx.Rows
+    var err error
 
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to fetch notes")
-		return
-	}
-	defer rows.Close()
+    if folderID != "" {
+        // Return notes in the specified folder
+        rows, err = h.DB.Query(context.Background(), `
+            SELECT id, title, content, folder_id, created_at, updated_at
+            FROM notes
+            WHERE user_id = $1 AND folder_id = $2
+            ORDER BY updated_at DESC
+        `, userID, folderID)
+    } else {
+        // Return unfiled notes only
+        rows, err = h.DB.Query(context.Background(), `
+            SELECT id, title, content, folder_id, created_at, updated_at
+            FROM notes
+            WHERE user_id = $1 AND folder_id IS NULL
+            ORDER BY updated_at DESC
+        `, userID)
+    }
 
-	notes := []map[string]any{}
+    if err != nil {
+        writeError(w, http.StatusInternalServerError, "failed to fetch notes")
+        return
+    }
+    defer rows.Close()
 
-	for rows.Next() {
-		var id, title string
-		var content *string
-		var createdAt, updatedAt time.Time
+    notes := []map[string]any{}
 
-		if err := rows.Scan(&id, &title, &content, &createdAt, &updatedAt); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to read note data")
-			return
-		}
+    for rows.Next() {
+        var id, title string
+        var content, noteFolderID *string
+        var createdAt, updatedAt time.Time
 
-		notes = append(notes, map[string]any{
-			"id":         id,
-			"title":      title,
-			"content":    content,
-			"created_at": createdAt.Format(time.RFC3339),
-			"updated_at": updatedAt.Format(time.RFC3339),
-		})
-	}
+        if err := rows.Scan(&id, &title, &content, &noteFolderID, &createdAt, &updatedAt); err != nil {
+            writeError(w, http.StatusInternalServerError, "failed to read note data")
+            return
+        }
 
-	writeJSON(w, http.StatusOK, notes)
+        notes = append(notes, map[string]any{
+            "id":         id,
+            "title":      title,
+            "content":    content,
+            "folder_id":  noteFolderID,
+            "created_at": createdAt.Format(time.RFC3339),
+            "updated_at": updatedAt.Format(time.RFC3339),
+        })
+    }
+
+    writeJSON(w, http.StatusOK, notes)
 }
 
 // CreateNote handles POST /api/notes

@@ -42,6 +42,7 @@ func main() {
 	photosHandler := &handler.PhotosHandler{DB: db, S3: s3Client}
 	notificationsHandler := &handler.NotificationsHandler{DB: db}
 	notesHandler := &handler.NotesHandler{DB: db}
+	foldersHandler := &handler.FoldersHandler{DB: db}
 
 	r := chi.NewRouter()
 
@@ -118,6 +119,13 @@ func main() {
 		r.Get("/api/notes/{id}", notesHandler.GetNote)
 		r.Patch("/api/notes/{id}", notesHandler.UpdateNote)
 		r.Delete("/api/notes/{id}", notesHandler.DeleteNote)
+
+		// folders
+		r.Get("/api/folders", foldersHandler.ListFolders)
+		r.Post("/api/folders", foldersHandler.CreateFolder)
+		r.Get("/api/folders/{id}", foldersHandler.GetFolder)
+		r.Patch("/api/folders/{id}", foldersHandler.RenameFolder)
+		r.Delete("/api/folders/{id}", foldersHandler.DeleteFolder)
 	})
 
 	fmt.Println("Server running on :8080")
