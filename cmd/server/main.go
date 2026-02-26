@@ -91,6 +91,7 @@ func main() {
 		r.Get("/api/boards", boardsHandler.ListBoards)
 		r.Post("/api/boards", boardsHandler.CreateBoard)
 		r.Get("/api/boards/{id}", boardsHandler.GetBoard)
+		r.Delete("/api/boards/{id}", boardsHandler.DeleteBoard)
 
 		// members
 		r.Get("/api/boards/{id}/members", membersHandler.ListMembers)

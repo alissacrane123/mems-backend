@@ -230,3 +230,29 @@ func (h *BoardsHandler) GetBoardByInviteCode(w http.ResponseWriter, r *http.Requ
 		"member_count": memberCount,
 	})
 }
+
+func (h *BoardsHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) {
+	id:= chi.URLParam(r, "id")
+	userID := middleware.GetUserID(r)
+
+	// Only allow deletion if the user is the owner
+	result, err := h.DB.Exec(context.Background(), `
+		DELETE FROM boards b
+		USING board_members bm
+		WHERE b.id = $1 AND bm.board_id = b.id AND bm.user_id = $2 AND bm.role = 'owner'
+	`, id, userID)
+
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete board")
+		return
+	}
+
+	if result.RowsAffected() == 0 {
+		writeError(w, http.StatusForbidden, "only board owners can delete the board")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"message": "board deleted",
+	})
+}
