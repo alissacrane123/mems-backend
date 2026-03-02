@@ -114,10 +114,10 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "token",
 		Value:    token,
-		HttpOnly: true,  // JavaScript cannot read this cookie (prevents XSS)
-		Secure:   false, // Set to true in production (requires HTTPS)
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   7 * 24 * 60 * 60, // 7 days in seconds
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteNoneMode, // changed from Lax to None
+		MaxAge:   7 * 24 * 60 * 60,
 		Path:     "/",
 	})
 
@@ -174,10 +174,10 @@ func (h *AuthHandler) Signin(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "token",
 		Value:    token,
-		HttpOnly: true,  // JavaScript cannot read this cookie (prevents XSS)
-		Secure:   false, // Set to true in production (requires HTTPS)
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   7 * 24 * 60 * 60, // 7 days in seconds
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteNoneMode, // changed from Lax to None
+		MaxAge:   7 * 24 * 60 * 60,
 		Path:     "/",
 	})
 
