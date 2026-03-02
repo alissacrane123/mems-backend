@@ -36,7 +36,7 @@ func main() {
 	authHandler := &handler.AuthHandler{DB: db}
 
 	usersHandler := &handler.UsersHandler{DB: db}
-	boardsHandler := &handler.BoardsHandler{DB: db}
+	boardsHandler := &handler.BoardsHandler{DB: db, S3: s3Client}
 	membersHandler := &handler.MembersHandler{DB: db}
 	entriesHandler := &handler.EntriesHandler{DB: db}
 	photosHandler := &handler.PhotosHandler{DB: db, S3: s3Client}
@@ -104,6 +104,7 @@ func main() {
 		// photos
 		r.Post("/api/entries/{entryId}/photos", photosHandler.UploadPhoto)
 		r.Get("/api/photos", photosHandler.GetPhoto)
+		r.Get("/api/boards/{id}/export-photos", boardsHandler.ExportPhotos)
 
 		// notifications
 		r.Get("/api/notifications", notificationsHandler.ListNotifications)

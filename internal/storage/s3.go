@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"os"
+	"io"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -59,4 +60,15 @@ func (s *S3Client) UploadFile(userID, entryID, ext string, file multipart.File) 
 	)
 
 	return filePath, publicURL, nil
+}
+
+func (s *S3Client) DownloadFile(filePath string) (io.ReadCloser, error) {
+	result, err := s.client.GetObject(context.Background(), &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(filePath),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to download from S3: %w", err)
+	}
+	return result.Body, nil
 }

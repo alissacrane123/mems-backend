@@ -8,16 +8,23 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+	"fmt"
+	"archive/zip"
+	"io"
+	"path/filepath"
+	"log"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/alissacrane123/mems-backend/internal/storage"
 	"github.com/alissacrane123/mems-backend/internal/middleware"
 )
 
 // BoardsHandler holds the database connection pool.
 type BoardsHandler struct {
 	DB *pgxpool.Pool
+	S3 *storage.S3Client
 }
 
 // generateInviteCode creates a random URL-safe string for board invite codes.
@@ -255,4 +262,89 @@ func (h *BoardsHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"message": "board deleted",
 	})
+}
+
+func (h *BoardsHandler) ExportPhotos(w http.ResponseWriter, r *http.Request) {
+	boardID := chi.URLParam(r, "id")
+	userID := middleware.GetUserID(r)
+
+	// Verify user is a member of the board and get board name
+	var boardName string
+	err := h.DB.QueryRow(context.Background(), `
+		SELECT b.name FROM boards b
+		JOIN board_members bm ON bm.board_id = b.id
+		WHERE b.id = $1 AND bm.user_id = $2
+	`, boardID, userID).Scan(&boardName)
+
+	if err != nil {
+		writeError(w, http.StatusNotFound, "board not found")
+		return
+	}
+
+	// Fetch all photos for this board ordered newest to oldest
+	rows, err := h.DB.Query(context.Background(), `
+		SELECT p.file_path FROM photos p
+		JOIN entries e ON e.id = p.entry_id
+		WHERE e.board_id = $1
+		ORDER BY p.created_at DESC
+	`, boardID)
+
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch photos")
+		return
+	}
+	defer rows.Close()
+
+	var filePaths []string
+	for rows.Next() {
+		var filePath string
+		if err := rows.Scan(&filePath); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to read photo data")
+			return
+		}
+		filePaths = append(filePaths, filePath)
+	}
+
+	if len(filePaths) == 0 {
+		writeError(w, http.StatusNotFound, "no photos found for this board")
+		return
+	}
+
+	// Set response headers for file download
+	zipName := fmt.Sprintf("Mems photo board: %s.zip", boardName)
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, zipName))
+
+	// Create zip writer that writes directly to the response
+	zipWriter := zip.NewWriter(w)
+	defer zipWriter.Close()
+
+	// Download each photo from S3 and add to zip
+	for i, filePath := range filePaths {
+		// Download from S3
+		result, err := h.S3.DownloadFile(filePath)
+		if err != nil {
+			log.Printf("failed to download photo %s: %v", filePath, err)
+			continue // skip failed photos rather than failing the whole export
+		}
+
+		// Use index + original extension for clean filenames
+		ext := filepath.Ext(filePath)
+		fileName := fmt.Sprintf("%d%s", i+1, ext)
+
+		// Create file entry in zip
+		fileWriter, err := zipWriter.Create(fileName)
+		if err != nil {
+			log.Printf("failed to create zip entry for %s: %v", filePath, err)
+			continue
+		}
+
+		// Copy photo data into zip
+		if _, err := io.Copy(fileWriter, result); err != nil {
+			log.Printf("failed to write photo to zip %s: %v", filePath, err)
+			continue
+		}
+
+		result.Close()
+	}
 }
