@@ -46,10 +46,15 @@ func main() {
 
 	r := chi.NewRouter()
 
+	allowedOrigins := []string{
+    os.Getenv("FRONTEND_URL"),
+    "http://localhost:3000",
+}
+
 	// CORS middleware — must be added before any routes
 	r.Use(cors.Handler(cors.Options{
 		// AllowedOrigins is your frontend URL — only this origin can make requests
-		AllowedOrigins: []string{os.Getenv("FRONTEND_URL")},
+		AllowedOrigins: allowedOrigins,
 
 		// AllowedMethods lists which HTTP methods the frontend can use
 		AllowedMethods: []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"},
