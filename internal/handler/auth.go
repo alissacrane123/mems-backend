@@ -5,6 +5,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -141,7 +142,8 @@ func (h *AuthHandler) Signin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Look up the user by email
+	log.Printf("Signin attempt for email: %s", req.Email)
+
 	var userID, passwordHash string
 	err := h.DB.QueryRow(context.Background(),
 		`SELECT id, password_hash FROM users WHERE email = $1`,
@@ -149,13 +151,15 @@ func (h *AuthHandler) Signin(w http.ResponseWriter, r *http.Request) {
 	).Scan(&userID, &passwordHash)
 
 	if err != nil {
-		// Don't reveal whether the email exists or not - just say invalid credentials
+		log.Printf("User lookup failed: %v", err)
 		writeError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
 
-	// Compare the provided password with the stored hash
+	log.Printf("Found user: %s hash: %s", userID, passwordHash)
+
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
+		log.Printf("Password mismatch: %v", err)
 		writeError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
