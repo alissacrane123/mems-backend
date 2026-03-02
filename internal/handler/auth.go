@@ -111,15 +111,15 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Replace the writeJSON response in both Signup and Signin with this:
-	http.SetCookie(w, &http.Cookie{
-		Name:     "token",
-		Value:    token,
-		HttpOnly: true,
-		Secure:   false,
-		SameSite: http.SameSiteNoneMode, // changed from Lax to None
-		MaxAge:   7 * 24 * 60 * 60,
-		Path:     "/",
-	})
+http.SetCookie(w, &http.Cookie{
+    Name:     "token",
+    Value:    token,
+    HttpOnly: true,
+    Secure:   true,
+    SameSite: http.SameSiteNoneMode,
+    MaxAge:   7 * 24 * 60 * 60,
+    Path:     "/",
+})
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user": map[string]string{"id": userID, "email": req.Email},
@@ -171,15 +171,15 @@ func (h *AuthHandler) Signin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Replace the writeJSON response in both Signup and Signin with this:
-	http.SetCookie(w, &http.Cookie{
-		Name:     "token",
-		Value:    token,
-		HttpOnly: true,
-		Secure:   false,
-		SameSite: http.SameSiteNoneMode, // changed from Lax to None
-		MaxAge:   7 * 24 * 60 * 60,
-		Path:     "/",
-	})
+http.SetCookie(w, &http.Cookie{
+    Name:     "token",
+    Value:    token,
+    HttpOnly: true,
+    Secure:   true,
+    SameSite: http.SameSiteNoneMode,
+    MaxAge:   7 * 24 * 60 * 60,
+    Path:     "/",
+})
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user": map[string]string{"id": userID, "email": req.Email},
